@@ -13,7 +13,7 @@ type LoginStep = 'credentials' | 'totp-setup' | 'totp-verify';
 export default function SuperAdminLoginPage() {
   const router = useRouter();
   const params = useParams();
-  const hash = params.hash as string;
+  const hash = params?.hash as string;
 
   const [step, setStep] = useState<LoginStep>('credentials');
   const [email, setEmail] = useState("");
