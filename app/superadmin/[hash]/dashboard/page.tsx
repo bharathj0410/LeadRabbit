@@ -48,6 +48,8 @@ interface Customer {
   adminId?: string;
   status: "active" | "inactive" | "suspended";
   createdAt: string;
+  maxUsers?: number;
+  maxAdmins?: number;
   metadata?: {
     companyName?: string;
     phone?: string;
@@ -255,6 +257,8 @@ export default function SuperAdminDashboard() {
       companyName: customer.metadata?.companyName || '',
       phone: customer.metadata?.phone || '',
       address: customer.metadata?.address || '',
+      maxUsers: customer.maxUsers || 0,
+      maxAdmins: customer.maxAdmins || 0,
     });
     onOpen();
   };
