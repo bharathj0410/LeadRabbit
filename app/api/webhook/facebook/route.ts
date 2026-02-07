@@ -237,7 +237,7 @@ async function processNewLead(
     // Find which customer database has this page
     const superAdminDb = client!.db("leadrabbit_superadmin");
     const customersCollection = superAdminDb.collection("customers");
-    const customers = await customersCollection.find({ verified: true }).toArray();
+    const customers = await customersCollection.find({}).toArray();
 
     let customerDb = null;
     let page = null;
