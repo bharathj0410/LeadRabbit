@@ -244,14 +244,14 @@ async function processNewLead(
 
     // Search for the page in each customer database
     for (const customer of customers) {
-      const testDb = client!.db(customer.dbName);
+      const testDb = client!.db(customer.databaseName);
       const metaPagesCollection = testDb.collection("meta_pages");
       const foundPage = await metaPagesCollection.findOne({ pageId });
       
       if (foundPage) {
         page = foundPage;
         customerDb = testDb;
-        console.log(`✅ Found page in customer database: ${customer.dbName}`);
+        console.log(`✅ Found page in customer database: ${customer.databaseName}`);
         break;
       }
     }
