@@ -3,8 +3,8 @@ import { useRouter } from "next/navigation";
 import axios from "@/lib/axios";
 
 // Inactivity timeout in milliseconds
-// Change INACTIVITY_TIME to 1800000 (30 minutes) for production
-const INACTIVITY_TIME = 60000; // 1 minute for testing
+// 30 minutes for production
+const INACTIVITY_TIME = 1800000; // 30 minutes
 
 export function useInactivityLogout() {
   const router = useRouter();
