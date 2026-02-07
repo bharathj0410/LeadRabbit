@@ -14,9 +14,9 @@ import { ExclamationTriangleIcon, ArrowRightOnRectangleIcon, CheckIcon } from "@
 import axios from "@/lib/axios";
 
 // Inactivity timeout in milliseconds
-// Change WARNING_TIME to 1800000 (30 minutes) for production
-const WARNING_TIME = 50000; // Show warning at 50 seconds (logout at 60)
-const INACTIVITY_TIME = 60000; // 1 minute for testing
+// 30 minutes for production
+const WARNING_TIME = 1750000; // Show warning at 50 seconds before logout
+const INACTIVITY_TIME = 1800000; // 30 minutes
 
 export function InactivityWarning() {
   const router = useRouter();
