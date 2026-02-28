@@ -126,6 +126,10 @@ export default function LeadDetailPage() {
     });
   }, []);
 
+  const handleLeadUpdate = useCallback((updatedLead) => {
+    setLead(updatedLead);
+  }, []);
+
   const handleOpenChange = useCallback((isOpen) => {
     if (!isOpen) {
       router.back();
@@ -169,6 +173,7 @@ export default function LeadDetailPage() {
       onStatusChange={handleStatusChange}
       onMeetingsChange={handleMeetingsChange}
       onEngagementsChange={handleEngagementsChange}
+      onLeadUpdate={handleLeadUpdate}
       isAdmin={true}
     />
   );

@@ -1,10 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import axios from "@/lib/axios";
-
-// Inactivity timeout in milliseconds
-// 30 minutes for production
-const INACTIVITY_TIME = 1800000; // 30 minutes
+import { INACTIVITY_TIME } from "@/config/inactivity";
 
 export function useInactivityLogout() {
   const router = useRouter();

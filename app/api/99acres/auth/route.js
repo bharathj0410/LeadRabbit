@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import clientPromise from "@/lib/mongodb";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 
 export async function POST(request) {
   try {
@@ -80,6 +81,20 @@ export async function POST(request) {
       },
       { upsert: true }
     );
+
+    // Ensure customer has a unique 99acres webhook ID in superadmin
+    const superAdminDb = client.db("leadrabbit_superadmin");
+    const customer = await superAdminDb
+      .collection("customers")
+      .findOne({ databaseName: dbName });
+
+    if (customer && !customer.webhooks?.["99acres"]) {
+      const webhookId = crypto.randomBytes(16).toString("hex");
+      await superAdminDb.collection("customers").updateOne(
+        { databaseName: dbName },
+        { $set: { "webhooks.99acres": webhookId } }
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

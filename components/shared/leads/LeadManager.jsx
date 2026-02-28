@@ -34,6 +34,7 @@ export default forwardRef(function LeadManager({
 }, ref) {
   const [leads, setLeads] = useState([]);
   const [filteredLeads, setFilteredLeads] = useState([]);
+  const [baseFilteredLeads, setBaseFilteredLeads] = useState([]); // Filtered by everything EXCEPT quickFilter (for tab counts)
   const [currentUserName, setCurrentUserName] = useState(userName || "");
   const [currentUserEmail, setCurrentUserEmail] = useState(userEmail || "");
   const [isLoading, setIsLoading] = useState(true);
@@ -228,11 +229,6 @@ export default forwardRef(function LeadManager({
   useEffect(() => {
     let filtered = [...leads];
 
-    // Apply quick filter first
-    if (quickFilter && quickFilter !== "all") {
-      filtered = filtered.filter((lead) => lead.status === quickFilter);
-    }
-
     // Apply favorites filter if enabled
     if (showFavoritesOnly) {
       filtered = filtered.filter((lead) => {
@@ -374,6 +370,14 @@ export default forwardRef(function LeadManager({
           return leadDate >= startDate;
         });
       }
+    }
+
+    // Save base filtered leads (before quick filter) for accurate tab counts
+    setBaseFilteredLeads(filtered);
+
+    // Apply quick filter last
+    if (quickFilter && quickFilter !== "all") {
+      filtered = filtered.filter((lead) => lead.status === quickFilter);
     }
 
     setFilteredLeads(filtered);
@@ -636,7 +640,7 @@ export default forwardRef(function LeadManager({
                 <div className="flex items-center gap-1">
                   <Squares2X2Icon className="w-4 h-4" />
                   <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                    {filteredLeads.length}
+                    {baseFilteredLeads.length}
                   </span>
                 </div>
               }
@@ -647,7 +651,7 @@ export default forwardRef(function LeadManager({
                 <div className="flex items-center gap-1">
                   <SparklesIcon className="w-4 h-4" />
                   <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                    {filteredLeads.filter((l) => l.status === "New").length}
+                    {baseFilteredLeads.filter((l) => l.status === "New").length}
                   </span>
                 </div>
               }
@@ -658,7 +662,7 @@ export default forwardRef(function LeadManager({
                 <div className="flex items-center gap-1">
                   <FireIcon className="w-4 h-4" />
                   <span className="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                    {filteredLeads.filter((l) => l.status === "Interested").length}
+                    {baseFilteredLeads.filter((l) => l.status === "Interested").length}
                   </span>
                 </div>
               }
@@ -669,7 +673,7 @@ export default forwardRef(function LeadManager({
                 <div className="flex items-center gap-1">
                   <XCircleIcon className="w-4 h-4" />
                   <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                    {filteredLeads.filter((l) => l.status === "Not Interested").length}
+                    {baseFilteredLeads.filter((l) => l.status === "Not Interested").length}
                   </span>
                 </div>
               }
@@ -680,7 +684,7 @@ export default forwardRef(function LeadManager({
                 <div className="flex items-center gap-1">
                   <CheckCircleIcon className="w-4 h-4" />
                   <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                    {filteredLeads.filter((l) => l.status === "Deal").length}
+                    {baseFilteredLeads.filter((l) => l.status === "Deal").length}
                   </span>
                 </div>
               }

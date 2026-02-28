@@ -1,6 +1,16 @@
+import { useState, useCallback } from "react";
 import { SiHomebridge } from "react-icons/si";
+import {
+  CheckIcon,
+  XMarkIcon,
+  UserIcon,
+  EnvelopeIcon,
+  PhoneIcon,
+} from "@heroicons/react/24/solid";
+import { PencilSquareIcon } from "@heroicons/react/24/outline";
 import StatusChip from "./StatusChip";
 import SourceBadge from "./SourceBadge";
+import axios from "@/lib/axios";
 
 const STATUS_STICKER_ALIAS = {
   InProgress: "Interested",
@@ -30,8 +40,79 @@ function resolveSticker(status) {
   return aliasKey ? (STATUS_STICKERS[aliasKey] ?? null) : null;
 }
 
-export default function LeadDetailNameCard({ lead }) {
+export default function LeadDetailNameCard({ lead, onLeadUpdate }) {
   const sticker = resolveSticker(lead?.status);
+
+  // Edit state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(lead?.name || "");
+  const [editEmail, setEditEmail] = useState(lead?.email || "");
+  const [editPhone, setEditPhone] = useState(lead?.phone || "");
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+
+  const handleStartEdit = useCallback(() => {
+    setEditName(lead?.name || "");
+    setEditEmail(lead?.email || "");
+    setEditPhone(lead?.phone || "");
+    setSaveError(null);
+    setIsEditing(true);
+  }, [lead]);
+
+  const handleCancelEdit = useCallback(() => {
+    setIsEditing(false);
+    setSaveError(null);
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    const leadId =
+      typeof lead?._id === "string"
+        ? lead._id
+        : lead?._id?.toString?.() || lead?.id;
+
+    if (!leadId) {
+      setSaveError("Lead ID not found");
+      return;
+    }
+
+    // Basic validation
+    const trimmedName = editName.trim();
+    const trimmedEmail = editEmail.trim();
+    const trimmedPhone = editPhone.trim();
+
+    if (!trimmedName) {
+      setSaveError("Name is required");
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setSaveError(null);
+
+      const updateData = {
+        name: trimmedName,
+        email: trimmedEmail,
+        phone: trimmedPhone,
+      };
+
+      const response = await axios.patch(
+        `leads/${encodeURIComponent(leadId)}`,
+        updateData,
+      );
+
+      // Update the parent with the new lead data
+      if (onLeadUpdate) {
+        onLeadUpdate(response.data);
+      }
+
+      setIsEditing(false);
+    } catch (err) {
+      console.error("Error updating lead:", err);
+      setSaveError(err?.response?.data?.error || "Failed to update lead");
+    } finally {
+      setIsSaving(false);
+    }
+  }, [lead, editName, editEmail, editPhone, onLeadUpdate]);
 
   return (
     <div className="relative">
@@ -51,11 +132,118 @@ export default function LeadDetailNameCard({ lead }) {
               <p className="text-xs sm:text-sm text-gray-500 mt-1 break-words">
                 {lead.email}
               </p>
+              {lead.phone && (
+                <p className="text-xs text-gray-400 mt-0.5 break-words">
+                  {lead.phone}
+                </p>
+              )}
             </div>
-            {/* Source Badge Inside Card */}
-            {lead?.source && <SourceBadge source={lead.source} size="sm" />}
+            {/* Source Badge and Edit Button */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {lead?.source && <SourceBadge source={lead.source} size="sm" />}
+              {!isEditing && (
+                <div
+                  onClick={handleStartEdit}
+                  className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center bg-white border border-gray-300 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-all duration-200 active:scale-95"
+                  title="Edit lead details"
+                >
+                  <PencilSquareIcon className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Edit Contact Info Panel */}
+        {isEditing && (
+          <div className="border-b border-gray-200">
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-blue-100">
+              <div className="flex items-center gap-2">
+                <PencilSquareIcon className="w-4 h-4 text-blue-600" />
+                <span className="text-sm font-semibold text-blue-900">Edit Contact Information</span>
+              </div>
+            </div>
+            <div className="p-4 space-y-3 bg-white">
+              {/* Name Field */}
+              <div>
+                <label className="flex items-center gap-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                  <UserIcon className="w-3 h-3" />
+                  Name
+                </label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Enter lead name"
+                  autoFocus
+                  className="w-full text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 focus:bg-white transition-all duration-200 placeholder:text-gray-400"
+                />
+              </div>
+              {/* Email Field */}
+              <div>
+                <label className="flex items-center gap-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                  <EnvelopeIcon className="w-3 h-3" />
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="Enter email address"
+                  className="w-full text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 focus:bg-white transition-all duration-200 placeholder:text-gray-400"
+                />
+              </div>
+              {/* Phone Field */}
+              <div>
+                <label className="flex items-center gap-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                  <PhoneIcon className="w-3 h-3" />
+                  Phone
+                </label>
+                <input
+                  type="tel"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  placeholder="Enter phone number"
+                  className="w-full text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 focus:bg-white transition-all duration-200 placeholder:text-gray-400"
+                />
+              </div>
+
+              {/* Error Message */}
+              {saveError && (
+                <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-100 rounded-xl">
+                  <XMarkIcon className="w-4 h-4 text-red-500 flex-shrink-0" />
+                  <p className="text-xs text-red-600 font-medium">{saveError}</p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow-md active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSaving ? (
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <CheckIcon className="w-4 h-4" />
+                  )}
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  disabled={isSaving}
+                  className="px-4 py-2.5 bg-gray-100 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-200 active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Content */}
         <div className="p-4 sm:p-6">

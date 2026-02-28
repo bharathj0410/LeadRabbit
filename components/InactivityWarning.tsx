@@ -12,13 +12,17 @@ import {
 } from "@heroui/react";
 import { ExclamationTriangleIcon, ArrowRightOnRectangleIcon, CheckIcon } from "@heroicons/react/24/solid";
 import axios from "@/lib/axios";
+import { INACTIVITY_TIME as DEFAULT_INACTIVITY_TIME, WARNING_BEFORE_LOGOUT as DEFAULT_WARNING_BEFORE } from "@/config/inactivity";
 
-// Inactivity timeout in milliseconds
-// 30 minutes for production
-const WARNING_TIME = 1750000; // Show warning at 50 seconds before logout
-const INACTIVITY_TIME = 1800000; // 30 minutes
+interface InactivityWarningProps {
+  inactivityTime?: number;
+  warningBefore?: number;
+}
 
-export function InactivityWarning() {
+export function InactivityWarning({
+  inactivityTime = DEFAULT_INACTIVITY_TIME,
+  warningBefore = DEFAULT_WARNING_BEFORE,
+}: InactivityWarningProps) {
   const router = useRouter();
   const [isWarningVisible, setIsWarningVisible] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(10);
@@ -51,15 +55,20 @@ export function InactivityWarning() {
 
     // Hide warning
     setIsWarningVisible(false);
-    setRemainingSeconds(10);
+    setRemainingSeconds(Math.round(warningBefore / 1000));
 
-    // Set warning timeout (show warning 10 seconds before logout)
+    const warningDelay = inactivityTime - warningBefore;
+    const countdownSecs = Math.round(warningBefore / 1000);
+
+    console.log(`⏱️ Inactivity timer set: ${inactivityTime / 1000}s total, warning at ${warningDelay / 1000}s, countdown ${countdownSecs}s`);
+
+    // Set warning timeout
     warningTimeoutRef.current = setTimeout(() => {
       console.log("⚠️ Showing inactivity warning");
       setIsWarningVisible(true);
       
       // Start countdown
-      let seconds = 10;
+      let seconds = countdownSecs;
       countdownRef.current = setInterval(() => {
         seconds--;
         setRemainingSeconds(seconds);
@@ -68,14 +77,14 @@ export function InactivityWarning() {
           if (countdownRef.current) clearInterval(countdownRef.current);
         }
       }, 1000);
-    }, WARNING_TIME);
+    }, warningDelay);
 
     // Set logout timeout
     timeoutRef.current = setTimeout(() => {
       console.log("⏱️ Inactivity timer triggered");
       handleLogout();
-    }, INACTIVITY_TIME);
-  }, [handleLogout]);
+    }, inactivityTime);
+  }, [handleLogout, inactivityTime, warningBefore]);
 
   // Auto logout when timer reaches 0
   useEffect(() => {

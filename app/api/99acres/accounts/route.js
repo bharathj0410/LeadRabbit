@@ -47,7 +47,18 @@ export async function GET(request) {
       })
     );
 
-    return NextResponse.json(accountsWithLeads);
+    // Get webhook URL for this customer
+    const superAdminDb = client.db("leadrabbit_superadmin");
+    const customer = await superAdminDb
+      .collection("customers")
+      .findOne({ databaseName: dbName });
+
+    const webhookId = customer?.webhooks?.["99acres"] || null;
+
+    return NextResponse.json({
+      accounts: accountsWithLeads,
+      webhookId,
+    });
   } catch (error) {
     console.error("Error fetching 99acres accounts:", error);
     return NextResponse.json([], { status: 200 }); // Return empty array instead of error

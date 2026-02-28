@@ -40,6 +40,7 @@ import {
   TrashIcon,
   KeyIcon,
   ShieldExclamationIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/solid";
 import CustomModal from "./CustomModal";
 import EmployeeEditModal from "./EmployeeEditModal";
@@ -980,6 +981,15 @@ export default function EmpTable() {
               </DropdownMenu>
             </Dropdown>
             <Button
+              isIconOnly
+              variant="flat"
+              onPress={fetchUsers}
+              title="Refresh"
+              isLoading={isLoading}
+            >
+              <ArrowPathIcon className="w-4 h-4" />
+            </Button>
+            <Button
               color="primary"
               endContent={<PlusIcon />}
               onPress={onAddModalOpen}
@@ -1015,6 +1025,8 @@ export default function EmpTable() {
     onSearchChange,
     hasSearchFilter,
     onAddModalOpen,
+    fetchUsers,
+    isLoading,
   ]);
 
   const bottomContent = React.useMemo(() => {
