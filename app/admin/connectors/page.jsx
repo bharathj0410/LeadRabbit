@@ -38,6 +38,7 @@ export default function ConnectorsPage() {
   const [toggleAction, setToggleAction] = useState(null);
   const [toggleAllAction, setToggleAllAction] = useState(null);
   const [ninetyNineAcresAccounts, setNinetyNineAcresAccounts] = useState([]);
+  const [webhookUrl99Acres, setWebhookUrl99Acres] = useState(null);
   const { isOpen: is99AcresOpen, onOpen: on99AcresOpen, onOpenChange: on99AcresOpenChange } = useDisclosure();
   const { isOpen: isSyncDateOpen, onOpen: onSyncDateOpen, onOpenChange: onSyncDateOpenChange } = useDisclosure();
   const { isOpen: isSyncProgressOpen, onOpen: onSyncProgressOpen, onOpenChange: onSyncProgressOpenChange } = useDisclosure();
@@ -196,17 +197,23 @@ export default function ConnectorsPage() {
         console.error("Error fetching 99acres accounts:", response.statusText);
         return;
       }
-      const accounts = await response.json();
-      setNinetyNineAcresAccounts(accounts);
+      const data = await response.json();
+      const accounts = data.accounts || data;
+      setNinetyNineAcresAccounts(Array.isArray(accounts) ? accounts : []);
 
-      // Log total leads from 99acres (for reference only)
-      const totalLeads99 = accounts.reduce((total, account) => {
+      // Set webhook URL if available
+      if (data.webhookId) {
+        const base = typeof window !== "undefined" ? window.location.origin : "";
+        setWebhookUrl99Acres(`${base}/api/webhook/99acres/${data.webhookId}`);
+      }
+
+      const totalLeads99 = (Array.isArray(accounts) ? accounts : []).reduce((total, account) => {
         return total + (account.totalLeads || 0);
       }, 0);
       console.log("✅ 99acres leads count from integration:", totalLeads99);
     } catch (error) {
       console.error("Error fetching 99acres accounts:", error);
-      setNinetyNineAcresAccounts([]); // Set empty array on error
+      setNinetyNineAcresAccounts([]);
     }
   };
 
@@ -1147,6 +1154,29 @@ export default function ConnectorsPage() {
               </div>
 
               <div className="space-y-2">
+                {webhookUrl99Acres && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 sm:p-3 mb-2">
+                    <p className="text-[10px] sm:text-xs font-semibold text-emerald-700 mb-1">Webhook URL (send to 99acres team)</p>
+                    <div className="flex items-center gap-2">
+                      <code className="text-[10px] sm:text-xs bg-white border border-emerald-200 rounded px-2 py-1 flex-1 break-all text-gray-700 select-all">
+                        {webhookUrl99Acres}
+                      </code>
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        variant="flat"
+                        color="success"
+                        className="flex-shrink-0 h-7 w-7 min-w-7"
+                        onPress={() => {
+                          navigator.clipboard.writeText(webhookUrl99Acres);
+                          addToast({ title: "Webhook URL copied!", color: "success" });
+                        }}
+                      >
+                        <LinkIcon className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {ninetyNineAcresAccounts.filter(acc => acc.isActive).map((account) => (
                   <div
                     key={account._id}

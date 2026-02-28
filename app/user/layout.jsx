@@ -9,6 +9,7 @@ import React, {
 import { useRouter, usePathname } from "next/navigation";
 import axios from "@/lib/axios";
 import Filter from "../../components/shared/leads/ui/Filter";
+import { UserFiltersProvider, useUserFilters } from "./UserFiltersContext";
 import {
   HomeIcon,
   UserGroupIcon,
@@ -38,13 +39,19 @@ import {
   ClipboardDocumentCheckIcon,
 } from "@heroicons/react/24/solid";
 
-export default function UserLayout({ children }) {
+function UserLayoutInner({ children }) {
   const router = useRouter();
   const pathname = usePathname();
-  const filterButtonRef = useRef(null);
 
-  const [filters, setFilters] = useState({});
-  const [leads, setLeads] = useState([]);
+  const {
+    filters,
+    handleFiltersChange,
+    handleClearFilters,
+    activeFilterCount,
+    filterRef: filterButtonRef,
+    openFilter,
+    leads,
+  } = useUserFilters();
   const [userProfile, setUserProfile] = useState(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -118,49 +125,18 @@ export default function UserLayout({ children }) {
   }, []);
 
 
-  // Fetch user profile and leads data
+  // Fetch user profile
   useEffect(() => {
     const fetchData = async () => {
       try {
         const response = await axios.get("me");
         setUserProfile(response.data);
-
-        // Fetch leads data for filter autocomplete
-        const userEmail = response.data?.email;
-        if (userEmail) {
-          const leadsResponse = await axios.get(
-            `/leads/getLeads?email=${encodeURIComponent(userEmail)}`,
-          );
-          setLeads(leadsResponse.data || []);
-        }
       } catch (error) {
         console.error("Error fetching data:", error);
       }
     };
     fetchData();
   }, []);
-
-  // Handle filters change
-  const handleFiltersChange = useCallback((newFilters) => {
-    setFilters(newFilters);
-  }, []);
-
-  // Clear all filters
-  const handleClearFilters = useCallback(() => {
-    setFilters({});
-  }, []);
-
-  // Calculate active filter count
-  const activeFilterCount = useMemo(() => {
-    let count = 0;
-    if (filters.nameSearch?.trim()) count++;
-    if (filters.emailSearch?.trim()) count++;
-    if (filters.phoneSearch?.trim()) count++;
-    if (filters.statusFilter && filters.statusFilter !== "all") count++;
-    if (filters.timeFilter && filters.timeFilter !== "all") count++;
-    if (filters.sourcePlatform && filters.sourcePlatform !== "all") count++;
-    return count;
-  }, [filters]);
 
   // Handle logout
   const handleLogout = useCallback(async () => {
@@ -221,9 +197,9 @@ export default function UserLayout({ children }) {
   ];
 
   const handleTabClick = (tab) => {
-    if (tab.isModal && filterButtonRef.current) {
+    if (tab.isModal) {
       // Trigger the existing Filter component's modal
-      filterButtonRef.current.openFilter();
+      openFilter();
     } else if (tab.path) {
       router.push(tab.path);
     }
@@ -250,13 +226,7 @@ export default function UserLayout({ children }) {
 
       {/* Main Content */}
       <div className="pb-20">
-        {React.cloneElement(children, {
-          sharedFilters: filters,
-          sharedLeads: leads,
-          onSharedFiltersChange: handleFiltersChange,
-          onSharedClearFilters: handleClearFilters,
-          sharedFilterRef: filterButtonRef,
-        })}
+        {children}
       </div>
 
       {/* Logout Confirmation Dialog */}
@@ -460,5 +430,34 @@ export default function UserLayout({ children }) {
         </div>
       </nav>
     </div>
+  );
+}
+
+export default function UserLayout({ children }) {
+  const [leads, setLeads] = useState([]);
+
+  // Fetch leads data for filter autocomplete
+  useEffect(() => {
+    const fetchLeadsForFilter = async () => {
+      try {
+        const response = await axios.get("me");
+        const userEmail = response.data?.email;
+        if (userEmail) {
+          const leadsResponse = await axios.get(
+            `/leads/getLeads?email=${encodeURIComponent(userEmail)}`,
+          );
+          setLeads(leadsResponse.data || []);
+        }
+      } catch (error) {
+        console.error("Error fetching leads for filter:", error);
+      }
+    };
+    fetchLeadsForFilter();
+  }, []);
+
+  return (
+    <UserFiltersProvider leads={leads}>
+      <UserLayoutInner>{children}</UserLayoutInner>
+    </UserFiltersProvider>
   );
 }

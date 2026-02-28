@@ -1,19 +1,67 @@
 "use client";
-import React, { useState, useCallback, useMemo, useRef } from "react";
+import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { UserGroupIcon, FunnelIcon, ArrowPathIcon } from "@heroicons/react/24/solid";
 import { Button } from "@heroui/react";
 import axios from "@/lib/axios";
 import LeadManager from "../../../components/shared/leads/LeadManager";
 import Filter from "../../../components/shared/leads/ui/Filter";
+import { useUserFilters } from "../UserFiltersContext";
 
 export default function UserAllLeadsPage() {
+  // Shared filter context from layout (bottom nav filter)
+  const {
+    filters: sharedFilters,
+    handleFiltersChange: sharedHandleFiltersChange,
+    handleClearFilters: sharedHandleClearFilters,
+    activeFilterCount: sharedActiveFilterCount,
+    filterRef: sharedFilterRef,
+    openFilter: sharedOpenFilter,
+    leads: sharedLeads,
+  } = useUserFilters();
+
   // Local state for this page
   const filterButtonRef = useRef(null);
   const leadManagerRef = useRef(null);
-  const [filters, setFilters] = useState({});
+  const [localFilters, setLocalFilters] = useState({});
   const [leads, setLeads] = useState([]);
   const [favorites, setFavorites] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Merge shared filters with local filters (shared takes priority when set)
+  const filters = useMemo(() => {
+    // If shared filters have active values, use them
+    const hasSharedFilters =
+      sharedFilters.nameSearch?.trim() ||
+      sharedFilters.emailSearch?.trim() ||
+      sharedFilters.phoneSearch?.trim() ||
+      (sharedFilters.statusFilter && sharedFilters.statusFilter !== "all") ||
+      (sharedFilters.timeFilter && sharedFilters.timeFilter !== "all") ||
+      (sharedFilters.sourceFilter && sharedFilters.sourceFilter !== "all") ||
+      sharedFilters.dateRange;
+
+    const hasLocalFilters =
+      localFilters.nameSearch?.trim() ||
+      localFilters.emailSearch?.trim() ||
+      localFilters.phoneSearch?.trim() ||
+      (localFilters.statusFilter && localFilters.statusFilter !== "all") ||
+      (localFilters.timeFilter && localFilters.timeFilter !== "all") ||
+      (localFilters.sourceFilter && localFilters.sourceFilter !== "all") ||
+      localFilters.dateRange;
+
+    // Use whichever was updated last
+    if (sharedFilters._cleared && (!localFilters._cleared || sharedFilters._cleared > localFilters._cleared)) {
+      return sharedFilters;
+    }
+    if (localFilters._cleared && (!sharedFilters._cleared || localFilters._cleared > sharedFilters._cleared)) {
+      return localFilters;
+    }
+
+    // If shared filters were applied (has _cleared timestamp or active filters), prefer shared
+    if (hasSharedFilters) return sharedFilters;
+    if (hasLocalFilters) return localFilters;
+
+    return { ...localFilters, ...sharedFilters };
+  }, [sharedFilters, localFilters]);
   // Load favorites from database
   React.useEffect(() => {
     const loadFavorites = async () => {
@@ -69,17 +117,17 @@ export default function UserAllLeadsPage() {
     fetchLeadsForFilter();
   }, []);
 
-  // Handle filters change
+  // Handle filters change - update both local and shared
   const handleFiltersChange = useCallback(
     (newFilters) => {
-      setFilters(newFilters);
+      setLocalFilters(newFilters);
+      sharedHandleFiltersChange(newFilters);
     },
-    [],
+    [sharedHandleFiltersChange],
   );
 
-  // Clear all filters
+  // Clear all filters - clear both local and shared
   const handleClearFilters = useCallback(() => {
-    // Create a completely clean filter object with explicit default values
     const clearedFilters = {
       nameSearch: "",
       emailSearch: "",
@@ -87,12 +135,12 @@ export default function UserAllLeadsPage() {
       statusFilter: "all",
       timeFilter: "all",
       dateRange: null,
-      sourcePlatform: "all",
-      // Add a timestamp to force parent component re-evaluation
+      sourceFilter: "all",
       _cleared: Date.now(),
     };
-    setFilters(clearedFilters);
-  }, []);
+    setLocalFilters(clearedFilters);
+    sharedHandleClearFilters();
+  }, [sharedHandleClearFilters]);
 
   // Calculate active filter count
   const activeFilterCount = useMemo(() => {
@@ -102,7 +150,7 @@ export default function UserAllLeadsPage() {
     if (filters.phoneSearch?.trim()) count++;
     if (filters.statusFilter && filters.statusFilter !== "all") count++;
     if (filters.timeFilter && filters.timeFilter !== "all") count++;
-    if (filters.sourcePlatform && filters.sourcePlatform !== "all") count++;
+    if (filters.sourceFilter && filters.sourceFilter !== "all") count++;
     return count;
   }, [filters]);
 
@@ -186,7 +234,7 @@ export default function UserAllLeadsPage() {
             </div>
             <div className="flex items-center gap-3">
               {/* Filter Button */}
-              <Button
+              {/* <Button
                 isIconOnly
                 variant="flat"
                 className="bg-white/20 backdrop-blur-sm text-white border-0 hover:bg-white/30 transition-all duration-200"
@@ -200,7 +248,7 @@ export default function UserAllLeadsPage() {
                     </div>
                   )}
                 </div>
-              </Button>
+              </Button> */}
 
               {/* Refresh Button */}
               <Button

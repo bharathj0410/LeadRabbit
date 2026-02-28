@@ -293,6 +293,7 @@ export default function LeadCard({
   onStatusChange,
   onMeetingsChange,
   onEngagementsChange,
+  onLeadUpdate,
   isAdmin = false,
 }) {
   const [leadStatus, setLeadStatus] = useState(
@@ -384,6 +385,13 @@ export default function LeadCard({
 
   const handleAssignmentChange = (updatedLead) => {
     setLeadData(updatedLead);
+  };
+
+  const handleLeadDetailUpdate = (updatedLead) => {
+    setLeadData(updatedLead);
+    if (onLeadUpdate) {
+      onLeadUpdate(updatedLead);
+    }
   };
 
   const propagateMeetings = (nextMeetings) => {
@@ -599,7 +607,7 @@ export default function LeadCard({
               </DrawerHeader>
               <DrawerBody className="pt-16 sm:pt-20 px-3 sm:px-4 pb-6">
                 <div className="space-y-4 sm:space-y-6 pt-5">
-                  <LeadDetailNameCard lead={displayedLead} />
+                  <LeadDetailNameCard lead={displayedLead} onLeadUpdate={handleLeadDetailUpdate} />
 
                   {/* Lead Assignment Section */}
                   <LeadAssignment

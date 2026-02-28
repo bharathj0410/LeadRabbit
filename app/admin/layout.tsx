@@ -9,6 +9,7 @@ import {
   UserIcon,
   LinkIcon,
   HeartIcon,
+  Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
 import {
   HomeIcon as HomeIconSolid,
@@ -161,6 +162,10 @@ export default function AdminLayout({
       }
       if (key === "favorites") {
         router.push("/admin/favorites");
+        return;
+      }
+      if (key === "configuration") {
+        router.push("/admin/configuration");
         return;
       }
       if (key === "team_settings") {
@@ -319,6 +324,12 @@ export default function AdminLayout({
                   <div className="flex items-center gap-2">
                     <HeartIcon className="w-5 text-slate-400" />
                     <p>Favourite</p>
+                  </div>
+                </DropdownItem>
+                <DropdownItem key="configuration">
+                  <div className="flex items-center gap-2">
+                    <Cog6ToothIcon className="w-5 text-slate-400" />
+                    <p>Configuration</p>
                   </div>
                 </DropdownItem>
                 <DropdownItem key="logout" color="danger">

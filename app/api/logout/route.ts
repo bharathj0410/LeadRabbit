@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
         .collection("users")
         .findOneAndUpdate(
           { email },
-          { $set: { isOnline: false, status: "inactive" } },
+          { $set: { isOnline: false, status: "inactive" }, $unset: { lastHeartbeat: "" } },
           { returnDocument: "after" },
         );
       

@@ -126,6 +126,10 @@ export default function UserLeadDetailPage() {
     });
   }, []);
 
+  const handleLeadUpdate = useCallback((updatedLead) => {
+    setLead(updatedLead);
+  }, []);
+
   const handleOpenChange = useCallback((isOpen) => {
     if (!isOpen) {
       router.back();
@@ -133,14 +137,6 @@ export default function UserLeadDetailPage() {
   }, [router]);
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
-
-  if (error || !lead) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -169,6 +165,7 @@ export default function UserLeadDetailPage() {
       onStatusChange={handleStatusChange}
       onMeetingsChange={handleMeetingsChange}
       onEngagementsChange={handleEngagementsChange}
+      onLeadUpdate={handleLeadUpdate}
       isAdmin={false}
     />
   );
