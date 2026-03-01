@@ -3,10 +3,10 @@ import { Db, ObjectId } from "mongodb";
 
 import { resolveAuthenticatedUser } from "@/app/api/_utils/auth";
 import {
-  deleteCalendarEvent,
-  isCalendarConfigured,
-  upsertCalendarEvent,
-} from "@/lib/googleCalendar";
+  getValidAccessToken,
+  upsertUserCalendarEvent,
+  deleteUserCalendarEvent,
+} from "@/lib/googleOAuthPerUser";
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
@@ -109,10 +109,17 @@ export async function PATCH(
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  if (!isCalendarConfigured()) {
+  // Require Google Calendar connection for rescheduling
+  const googleTokens = await getValidAccessToken(auth.db, auth.email);
+
+  if (!googleTokens) {
     return NextResponse.json(
-      { error: "Google Calendar is not configured." },
-      { status: 500 },
+      {
+        error:
+          "Google Calendar is not connected. Please connect your Google account before updating meetings.",
+        code: "GOOGLE_CALENDAR_NOT_CONNECTED",
+      },
+      { status: 400 },
     );
   }
 
@@ -238,27 +245,58 @@ export async function PATCH(
       typeof email === "string" && arr.indexOf(email) === index,
   );
 
-  const event = await upsertCalendarEvent({
-    eventId: meeting.googleEventId ?? undefined,
-    summary: updateData.title ?? meeting.title,
-    description:
-      payload.description?.toString().trim() ?? meeting.description ?? "",
-    location: payload.location?.toString().trim() ?? meeting.location ?? "",
-    start: {
-      dateTime: startDateTime,
-      timeZone,
-    },
-    end: {
-      dateTime: endDateTime,
-      timeZone,
-    },
-    attendees: attendees.map((email: string) => ({ email })),
-  });
+  let googleEventId = meeting.googleEventId ?? null;
+  let hangoutLink = meeting.hangoutLink ?? null;
 
-  if (!event || !event.id) {
+  // Update Google Calendar event – meeting is NOT updated unless this succeeds
+  try {
+    const event = await upsertUserCalendarEvent(googleTokens.accessToken, {
+      eventId: meeting.googleEventId ?? undefined,
+      summary: updateData.title ?? meeting.title,
+      description:
+        payload.description?.toString().trim() ?? meeting.description ?? "",
+      location: payload.location?.toString().trim() ?? meeting.location ?? "",
+      start: {
+        dateTime: startDateTime,
+        timeZone,
+      },
+      end: {
+        dateTime: endDateTime,
+        timeZone,
+      },
+      attendees: attendees.map((email: string) => ({ email })),
+    });
+
+    if (event?.id) {
+      googleEventId = event.id;
+      hangoutLink = event.hangoutLink ?? null;
+    } else {
+      return NextResponse.json(
+        { error: "Google Calendar event was not updated. Please try again." },
+        { status: 502 },
+      );
+    }
+  } catch (calendarError: any) {
+    console.error("Failed to update Google Calendar event:", calendarError);
+
+    const isScopes =
+      calendarError?.status === 403 ||
+      calendarError?.message?.includes("insufficient authentication scopes");
+
+    if (isScopes) {
+      return NextResponse.json(
+        {
+          error:
+            "Your Google account does not have calendar permissions. Please disconnect and reconnect your Google Calendar.",
+          code: "INSUFFICIENT_SCOPES",
+        },
+        { status: 403 },
+      );
+    }
+
     return NextResponse.json(
-      { error: "Failed to update Google Calendar event." },
-      { status: 500 },
+      { error: "Failed to update Google Calendar event. Meeting was not updated." },
+      { status: 502 },
     );
   }
 
@@ -286,8 +324,9 @@ export async function PATCH(
         "meetings.$.startDateTime": startDateTime,
         "meetings.$.endDateTime": endDateTime,
         "meetings.$.timeZone": timeZone,
-        "meetings.$.googleEventId": event.id,
-        "meetings.$.hangoutLink": event.hangoutLink ?? null,
+        "meetings.$.googleEventId": googleEventId,
+        "meetings.$.hangoutLink": hangoutLink,
+        "meetings.$.googleCalendarSynced": true,
         "meetings.$.status": "scheduled",
         "meetings.$.updatedAt": now,
       },
@@ -297,14 +336,17 @@ export async function PATCH(
     },
   );
 
-  if (!updateResult || !updateResult.value) {
+  // MongoDB driver v7 returns the document directly (not wrapped in .value)
+  const updatedDoc = (updateResult as any)?.value ?? updateResult;
+
+  if (!updatedDoc) {
     return NextResponse.json(
       { error: "Failed to update meeting." },
       { status: 500 },
     );
   }
 
-  const updatedMeetings = updateResult.value.meetings ?? [];
+  const updatedMeetings = updatedDoc.meetings ?? [];
 
   return NextResponse.json({ meetings: updatedMeetings }, { status: 200 });
 }
@@ -319,12 +361,8 @@ export async function DELETE(
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  if (!isCalendarConfigured()) {
-    return NextResponse.json(
-      { error: "Google Calendar is not configured." },
-      { status: 500 },
-    );
-  }
+  // Get user's Google tokens (needed to cancel Google Calendar event)
+  const googleTokens = await getValidAccessToken(auth.db, auth.email);
 
   const { leadId, meetingId } = await params;
 
@@ -365,8 +403,14 @@ export async function DELETE(
 
   const meeting = leadDoc.meetings[0];
 
-  if (meeting.googleEventId) {
-    await deleteCalendarEvent(meeting.googleEventId).catch(() => null);
+  // Cancel Google Calendar event if the user has connected their account
+  if (meeting.googleEventId && googleTokens) {
+    try {
+      await deleteUserCalendarEvent(googleTokens.accessToken, meeting.googleEventId);
+    } catch (calendarError) {
+      console.error("Failed to delete Google Calendar event:", calendarError);
+      // Continue – the meeting will be cancelled locally
+    }
   }
 
   const now = new Date();
@@ -390,7 +434,10 @@ export async function DELETE(
     },
   );
 
-  if (!updateResult || !updateResult.value) {
+  // MongoDB driver v7 returns the document directly (not wrapped in .value)
+  const cancelledDoc = (updateResult as any)?.value ?? updateResult;
+
+  if (!cancelledDoc) {
     return NextResponse.json(
       { error: "Failed to cancel meeting." },
       { status: 500 },
@@ -398,7 +445,7 @@ export async function DELETE(
   }
 
   return NextResponse.json(
-    { meetings: updateResult.value.meetings ?? [] },
+    { meetings: cancelledDoc.meetings ?? [] },
     { status: 200 },
   );
 }

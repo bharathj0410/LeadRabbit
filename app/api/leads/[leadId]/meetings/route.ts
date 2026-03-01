@@ -3,9 +3,9 @@ import { ObjectId } from "mongodb";
 
 import { resolveAuthenticatedUser } from "@/app/api/_utils/auth";
 import {
-  isCalendarConfigured,
-  upsertCalendarEvent,
-} from "@/lib/googleCalendar";
+  getValidAccessToken,
+  upsertUserCalendarEvent,
+} from "@/lib/googleOAuthPerUser";
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
@@ -85,10 +85,18 @@ export async function POST(
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  if (!isCalendarConfigured()) {
+  // Require Google Calendar connection – meetings are only created when the
+  // calendar event is successfully synced.
+  const googleTokens = await getValidAccessToken(auth.db, auth.email);
+
+  if (!googleTokens) {
     return NextResponse.json(
-      { error: "Google Calendar is not configured." },
-      { status: 500 },
+      {
+        error:
+          "Google Calendar is not connected. Please connect your Google account before creating meetings.",
+        code: "GOOGLE_CALENDAR_NOT_CONNECTED",
+      },
+      { status: 400 },
     );
   }
 
@@ -190,25 +198,56 @@ export async function POST(
   const startDateTime = buildDateTime(date, startTime24);
   const endDateTime = buildDateTime(date, endTime24);
 
-  const event = await upsertCalendarEvent({
-    summary: title,
-    description,
-    location,
-    start: {
-      dateTime: startDateTime,
-      timeZone,
-    },
-    end: {
-      dateTime: endDateTime,
-      timeZone,
-    },
-    attendees,
-  });
+  // Create Google Calendar event – meeting is NOT saved unless this succeeds
+  let googleEventId: string | null = null;
+  let hangoutLink: string | null = null;
 
-  if (!event || !event.id) {
+  try {
+    const event = await upsertUserCalendarEvent(googleTokens.accessToken, {
+      summary: title,
+      description,
+      location,
+      start: {
+        dateTime: startDateTime,
+        timeZone,
+      },
+      end: {
+        dateTime: endDateTime,
+        timeZone,
+      },
+      attendees,
+    });
+
+    if (event?.id) {
+      googleEventId = event.id;
+      hangoutLink = event.hangoutLink ?? null;
+    } else {
+      return NextResponse.json(
+        { error: "Google Calendar event was not created. Please try again." },
+        { status: 502 },
+      );
+    }
+  } catch (calendarError: any) {
+    console.error("Failed to create Google Calendar event:", calendarError);
+
+    const isScopes =
+      calendarError?.status === 403 ||
+      calendarError?.message?.includes("insufficient authentication scopes");
+
+    if (isScopes) {
+      return NextResponse.json(
+        {
+          error:
+            "Your Google account does not have calendar permissions. Please disconnect and reconnect your Google Calendar.",
+          code: "INSUFFICIENT_SCOPES",
+        },
+        { status: 403 },
+      );
+    }
+
     return NextResponse.json(
-      { error: "Failed to create Google Calendar event." },
-      { status: 500 },
+      { error: "Failed to create Google Calendar event. Meeting was not saved." },
+      { status: 502 },
     );
   }
 
@@ -227,8 +266,9 @@ export async function POST(
     location,
     description,
     attendees: attendees.map((attendee) => attendee.email),
-    googleEventId: event.id,
-    hangoutLink: event.hangoutLink ?? null,
+    googleEventId,
+    hangoutLink,
+    googleCalendarSynced: true,
     status: "scheduled",
     createdAt: now,
     updatedAt: now,
@@ -247,7 +287,10 @@ export async function POST(
     },
   );
 
-  if (!updateResult || !updateResult.value) {
+  // MongoDB driver v7 returns the document directly (not wrapped in .value)
+  const updatedDoc = (updateResult as any)?.value ?? updateResult;
+
+  if (!updatedDoc) {
     return NextResponse.json(
       { error: "Failed to persist meeting to lead document." },
       { status: 500 },
@@ -257,7 +300,8 @@ export async function POST(
   return NextResponse.json(
     {
       meeting: meetingRecord,
-      meetings: updateResult.value.meetings ?? [meetingRecord],
+      meetings: updatedDoc.meetings ?? [meetingRecord],
+      googleCalendarSynced: true,
     },
     { status: 201 },
   );
