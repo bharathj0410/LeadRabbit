@@ -1,12 +1,12 @@
 "use client";
-import { createMeetingHandlers } from "../../user/components/ui/MeetingHandlers";
+import { createMeetingHandlers } from "@/components/shared/leads/ui/MeetingHandlers";
 import React, { useState, useEffect } from "react";
 import { Button, Avatar, Select, SelectItem, Chip } from "@heroui/react";
 import { MegaphoneIcon, PhoneIcon } from "@heroicons/react/24/solid";
 import { IoLogoWhatsapp } from "react-icons/io";
 import { FaMessage } from "react-icons/fa6";
 import { MdEmail } from "react-icons/md";
-import LeadMeetingDetalsTable from "../../user/components/ui/LeadMeetingDetalsTable";
+import LeadMeetingDetalsTable from "@/components/shared/leads/ui/LeadMeetingDetalsTable";
 import LeadDetailNameCard from "../../user/components/ui/LeadDetailNameCard";
 import LeadHistoryTable from "../../user/components/ui/LeadHistoryTable";
 import StatusChip from "../../user/components/ui/StatusChip";

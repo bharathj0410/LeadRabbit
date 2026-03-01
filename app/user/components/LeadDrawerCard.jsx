@@ -1,4 +1,4 @@
-import { createMeetingHandlers } from "./ui/MeetingHandlers";
+import { createMeetingHandlers } from "@/components/shared/leads/ui/MeetingHandlers";
 import { useEffect, useMemo, useState } from "react";
 import {
   Drawer,
@@ -22,7 +22,7 @@ import {
 import { IoLogoWhatsapp } from "react-icons/io";
 import { FaMessage } from "react-icons/fa6";
 import { MdEmail } from "react-icons/md";
-import LeadMeetingDetalsTable from "./ui/LeadMeetingDetalsTable";
+import LeadMeetingDetalsTable from "@/components/shared/leads/ui/LeadMeetingDetalsTable";
 import LeadDetailNameCard from "./ui/LeadDetailNameCard";
 import LeadHistoryTable from "./ui/LeadHistoryTable";
 import StatusChip from "./ui/StatusChip";

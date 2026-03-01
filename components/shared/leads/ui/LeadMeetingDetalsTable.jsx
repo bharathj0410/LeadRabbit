@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import {
   Accordion,
   AccordionItem,
@@ -13,7 +13,6 @@ import {
   Select,
   SelectItem,
   Textarea,
-  Switch,
   addToast,
 } from "@heroui/react";
 import { DatePicker } from "@heroui/date-picker";
@@ -31,6 +30,7 @@ import {
 } from "@internationalized/date";
 
 import CalendarCard from "./CalendarCard";
+import GoogleCalendarConnect from "@/components/shared/GoogleCalendarConnect";
 
 const itemClasses = {
   base: "py-0 w-full",
@@ -103,7 +103,6 @@ const initialFormState = {
   location: "",
   description: "",
   timeZone: "Asia/Kolkata", // Always use IST
-  createGoogleEvent: true, // Default to creating Google Calendar events
   attendeeEmail: "",
 };
 
@@ -145,123 +144,8 @@ export default function LeadMeetingDetalsTable({
   const [formError, setFormError] = useState(null);
   const [editingMeetingId, setEditingMeetingId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Handle return from Google OAuth
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const accessToken = urlParams.get("access_token");
-    const userEmail = urlParams.get("user_email");
-
-    if (accessToken && userEmail) {
-      // Store auth data
-      sessionStorage.setItem(
-        "googleAuth",
-        JSON.stringify({
-          accessToken,
-          email: userEmail,
-        }),
-      );
-
-      // Check for pending meeting data
-      const pendingData = sessionStorage.getItem("pendingMeetingData");
-      if (pendingData) {
-        const meetingData = JSON.parse(pendingData);
-        sessionStorage.removeItem("pendingMeetingData");
-
-        // Auto-create the meeting with Google Calendar event
-        handleCreateMeetingWithGoogle(meetingData, accessToken);
-      }
-
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, []);
-
-  const handleCreateMeetingWithGoogle = async (meetingData, accessToken) => {
-    try {
-      // Create Google Calendar event
-      const eventResponse = await fetch("/api/calendar/create-event", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          accessToken,
-          event: {
-            summary: meetingData.title,
-            description: meetingData.description,
-            location: meetingData.location,
-            start: {
-              dateTime: createISTDateTime(
-                meetingData.date,
-                meetingData.startTime,
-              ),
-              timeZone: "Asia/Kolkata",
-            },
-            end: {
-              dateTime: createISTDateTime(
-                meetingData.date,
-                meetingData.endTime,
-              ),
-              timeZone: "Asia/Kolkata",
-            },
-            attendees: meetingData.attendeeEmail
-              ? [{ email: meetingData.attendeeEmail }]
-              : [],
-          },
-        }),
-      });
-
-      if (eventResponse.ok) {
-        const eventData = await eventResponse.json();
-
-        // Create local meeting with Google event info
-        const payload = {
-          ...meetingData,
-          googleEventId: eventData.event.id,
-          googleEventLink: eventData.event.htmlLink,
-        };
-
-        const result = await onCreateMeeting?.(payload);
-        if (result?.success) {
-          addToast({
-            title: "Success",
-            description:
-              "Meeting and Google Calendar event created successfully!",
-            color: "success",
-            classNames: {
-              base: "bg-green-50 border border-green-200 shadow-lg",
-              title: "text-green-800 font-semibold",
-              description: "text-green-700",
-            },
-          });
-        }
-      } else {
-        addToast({
-          title: "Warning",
-          description: "Meeting created but Google Calendar event failed",
-          color: "warning",
-          classNames: {
-            base: "bg-orange-50 border border-orange-200 shadow-lg",
-            title: "text-orange-800 font-semibold",
-            description: "text-orange-700",
-          },
-        });
-      }
-    } catch (error) {
-      console.error("Error creating meeting with Google Calendar:", error);
-      addToast({
-        title: "Error",
-        description: "Error creating Google Calendar event",
-        color: "danger",
-        classNames: {
-          base: "bg-red-50 border border-red-200 shadow-lg",
-          title: "text-red-800 font-semibold",
-          description: "text-red-700",
-        },
-      });
-    }
-  };
+  const [isGoogleCalendarConnected, setIsGoogleCalendarConnected] =
+    useState(false);
 
   const sortedMeetings = useMemo(() => {
     if (!Array.isArray(meetings)) return [];
@@ -308,7 +192,6 @@ export default function LeadMeetingDetalsTable({
       location: meeting.location ?? "",
       description: meeting.description ?? "",
       timeZone: "Asia/Kolkata", // Always use IST
-      createGoogleEvent: true, // Always enable Google Calendar integration for reschedule
       attendeeEmail: meeting.attendeeEmail || leadEmail || "",
     });
     setFormError(null);
@@ -325,106 +208,6 @@ export default function LeadMeetingDetalsTable({
     setFormState((prev) => ({ ...prev, [field]: value }));
     if (formError) setFormError(null);
     if (clearActionError) clearActionError();
-  };
-
-  const createGoogleCalendarEvent = async (meetingData) => {
-    try {
-      // First, try to get Google OAuth token from session storage or prompt user
-      const existingAuth = sessionStorage.getItem("googleAuth");
-      let accessToken = null;
-
-      if (existingAuth) {
-        const authData = JSON.parse(existingAuth);
-        accessToken = authData.accessToken;
-      } else {
-        // Store current page for return after OAuth
-        sessionStorage.setItem("googleAuthReturnUrl", window.location.pathname);
-
-        // Redirect to Google OAuth with context
-        const currentPath = window.location.pathname;
-        const context = currentPath.includes("/admin") ? "admin" : "user";
-
-        const response = await fetch(`/api/auth/google?context=${context}`);
-        const data = await response.json();
-        if (data.authUrl) {
-          // Store pending meeting data
-          sessionStorage.setItem(
-            "pendingMeetingData",
-            JSON.stringify(meetingData),
-          );
-          window.location.href = data.authUrl;
-          return null; // Will return after redirect
-        }
-      }
-
-      if (accessToken) {
-        // Create the calendar event
-        const eventResponse = await fetch("/api/calendar/create-event", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            accessToken,
-            event: {
-              summary: meetingData.title,
-              description: meetingData.description,
-              location: meetingData.location,
-              start: {
-                dateTime: createISTDateTime(
-                  meetingData.date,
-                  meetingData.startTime,
-                ),
-                timeZone: "Asia/Kolkata",
-              },
-              end: {
-                dateTime: createISTDateTime(
-                  meetingData.date,
-                  meetingData.endTime,
-                ),
-                timeZone: "Asia/Kolkata",
-              },
-              attendees: meetingData.attendeeEmail
-                ? [{ email: meetingData.attendeeEmail }]
-                : [],
-            },
-          }),
-        });
-
-        if (eventResponse.ok) {
-          const eventData = await eventResponse.json();
-          return eventData.event;
-        } else {
-          const errorData = await eventResponse.json();
-          throw new Error(
-            errorData.error || "Failed to create Google Calendar event",
-          );
-        }
-      }
-    } catch (error) {
-      console.error("Google Calendar error:", error);
-      throw error;
-    }
-  };
-
-  const convertTo24Hour = (time12h) => {
-    const [time, modifier] = time12h.split(" ");
-    let [hours, minutes] = time.split(":");
-    hours = parseInt(hours, 10);
-
-    if (modifier === "AM") {
-      if (hours === 12) hours = 0; // 12 AM = 00:xx
-    } else if (modifier === "PM") {
-      if (hours !== 12) hours += 12; // 1 PM = 13:xx, but 12 PM = 12:xx
-    }
-
-    return `${String(hours).padStart(2, "0")}:${minutes}`;
-  };
-
-  // Helper function to create proper ISO datetime string with IST timezone
-  const createISTDateTime = (date, time) => {
-    const time24 = convertTo24Hour(time);
-    return `${date}T${time24}:00+05:30`; // Explicitly specify IST offset
   };
 
   const handleSubmit = async () => {
@@ -455,13 +238,13 @@ export default function LeadMeetingDetalsTable({
     const normalizedMeetingId = normalizeMeetingId(editingMeetingId);
 
     try {
-      // First, save meeting to database
+      // Call the server API which handles Google Calendar automatically
+      // (using the user's stored OAuth tokens if connected)
       const result = normalizedMeetingId
         ? await onRescheduleMeeting?.(normalizedMeetingId, payload)
         : await onCreateMeeting?.(payload);
 
       if (!result?.success) {
-        // If database save fails, show error and stop
         setFormError(result?.error || "Failed to save meeting");
         addToast({
           title: "Error",
@@ -476,84 +259,33 @@ export default function LeadMeetingDetalsTable({
         return;
       }
 
-      // Database save successful, now handle Google Calendar if enabled
-      if (formState.createGoogleEvent) {
-        try {
-          if (normalizedMeetingId) {
-            // Reschedule existing Google Calendar event
-            const meeting = meetings.find(
-              (m) => normalizeMeetingId(m._id) === normalizedMeetingId,
-            );
-            if (meeting?.googleEventId) {
-              await rescheduleGoogleCalendarEvent(
-                meeting.googleEventId,
-                payload,
-              );
-            } else {
-              // Create new Google Calendar event for existing meeting
-              const googleEvent = await createGoogleCalendarEvent(payload);
-              if (googleEvent) {
-                payload.googleEventId = googleEvent.id;
-                payload.googleEventLink = googleEvent.htmlLink;
-              }
-            }
-          } else {
-            // Create new Google Calendar event for new meeting
-            const googleEvent = await createGoogleCalendarEvent(payload);
-            if (googleEvent) {
-              payload.googleEventId = googleEvent.id;
-              payload.googleEventLink = googleEvent.htmlLink;
-            }
-          }
+      // Show appropriate toast based on whether calendar was synced
+      const isGoogleSynced = result?.isGoogleCalendar;
 
-          // Success with Google Calendar
-          addToast({
-            title: "Success",
-            description: normalizedMeetingId
-              ? "Meeting rescheduled and calendar updated successfully!"
-              : "Meeting created and added to calendar successfully!",
-            color: "success",
-            classNames: {
-              base: "bg-green-50 border border-green-200 shadow-lg",
-              title: "text-green-800 font-semibold",
-              description: "text-green-700",
-            },
-          });
-        } catch (calendarError) {
-          console.error("Google Calendar error:", calendarError);
-          // Database save was successful, but calendar failed
-          addToast({
-            title: "Partial Success",
-            description: `Meeting saved successfully, but Google Calendar sync failed: ${calendarError.message}`,
-            color: "warning",
-            classNames: {
-              base: "bg-orange-50 border border-orange-200 shadow-lg",
-              title: "text-orange-800 font-semibold",
-              description: "text-orange-700",
-            },
-          });
-        }
-      } else {
-        // Success without Google Calendar
-        const isLocalOnly = result?.isLocalOnly;
+      if (isGoogleSynced) {
         addToast({
           title: "Success",
-          description: isLocalOnly
-            ? normalizedMeetingId
-              ? "Meeting rescheduled locally (Google Calendar not configured)"
-              : "Meeting created locally (Google Calendar not configured)"
-            : normalizedMeetingId
-              ? "Meeting rescheduled successfully!"
-              : "Meeting created successfully!",
-          color: isLocalOnly ? "warning" : "success",
+          description: normalizedMeetingId
+            ? "Meeting rescheduled and Google Calendar updated!"
+            : "Meeting created and added to your Google Calendar!",
+          color: "success",
           classNames: {
-            base: isLocalOnly
-              ? "bg-orange-50 border border-orange-200 shadow-lg"
-              : "bg-green-50 border border-green-200 shadow-lg",
-            title: isLocalOnly
-              ? "text-orange-800 font-semibold"
-              : "text-green-800 font-semibold",
-            description: isLocalOnly ? "text-orange-700" : "text-green-700",
+            base: "bg-green-50 border border-green-200 shadow-lg",
+            title: "text-green-800 font-semibold",
+            description: "text-green-700",
+          },
+        });
+      } else {
+        addToast({
+          title: "Success",
+          description: normalizedMeetingId
+            ? "Meeting rescheduled successfully!"
+            : "Meeting created successfully!",
+          color: "success",
+          classNames: {
+            base: "bg-green-50 border border-green-200 shadow-lg",
+            title: "text-green-800 font-semibold",
+            description: "text-green-700",
           },
         });
       }
@@ -579,111 +311,11 @@ export default function LeadMeetingDetalsTable({
     }
   };
 
-  const rescheduleGoogleCalendarEvent = async (eventId, meetingData) => {
-    try {
-      const existingAuth = sessionStorage.getItem("googleAuth");
-      if (!existingAuth) {
-        throw new Error(
-          "Google Calendar authentication required. Please sign in again.",
-        );
-      }
-
-      const authData = JSON.parse(existingAuth);
-      const accessToken = authData.accessToken;
-
-      const eventResponse = await fetch("/api/calendar/update-event", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          accessToken,
-          eventId,
-          title: meetingData.title,
-          description: meetingData.description,
-          startTime: createISTDateTime(meetingData.date, meetingData.startTime),
-          endTime: createISTDateTime(meetingData.date, meetingData.endTime),
-          attendees: meetingData.attendeeEmail
-            ? [meetingData.attendeeEmail]
-            : [],
-        }),
-      });
-
-      if (!eventResponse.ok) {
-        const errorData = await eventResponse.json();
-        throw new Error(
-          errorData.error || "Failed to reschedule Google Calendar event",
-        );
-      }
-
-      const eventData = await eventResponse.json();
-      return eventData.event;
-    } catch (error) {
-      console.error("Google Calendar reschedule error:", error);
-      throw error;
-    }
-  };
-
-  const cancelGoogleCalendarEvent = async (eventId) => {
-    try {
-      const existingAuth = sessionStorage.getItem("googleAuth");
-      if (!existingAuth) {
-        console.warn("No Google Calendar authentication found");
-        return;
-      }
-
-      const authData = JSON.parse(existingAuth);
-      const accessToken = authData.accessToken;
-
-      const eventResponse = await fetch("/api/calendar/cancel-event", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          accessToken,
-          eventId,
-        }),
-      });
-
-      if (!eventResponse.ok) {
-        const errorData = await eventResponse.json();
-        throw new Error(
-          errorData.error || "Failed to cancel Google Calendar event",
-        );
-      }
-
-      return await eventResponse.json();
-    } catch (error) {
-      console.error("Google Calendar cancel error:", error);
-      throw error;
-    }
-  };
-
-  const handleCancelMeetingWithGoogle = async (meeting) => {
+  const handleCancelMeeting = async (meeting) => {
     const normalizedId = normalizeMeetingId(meeting._id);
     if (!normalizedId) return;
 
-    // If meeting has Google Calendar event, cancel it first
-    if (meeting.googleEventId) {
-      try {
-        await cancelGoogleCalendarEvent(meeting.googleEventId);
-      } catch (error) {
-        console.error("Failed to cancel Google Calendar event:", error);
-        addToast({
-          title: "Warning",
-          description: `Meeting will be cancelled locally, but Google Calendar event could not be cancelled: ${error.message}`,
-          color: "warning",
-          classNames: {
-            base: "bg-orange-50 border border-orange-200 shadow-lg",
-            title: "text-orange-800 font-semibold",
-            description: "text-orange-700",
-          },
-        });
-      }
-    }
-
-    // Cancel local meeting
+    // Server handles Google Calendar cancellation automatically
     await onCancelMeeting?.(normalizedId);
   };
 
@@ -739,6 +371,14 @@ export default function LeadMeetingDetalsTable({
             Schedule & Track Meetings
           </div>
         </div>
+
+        {/* Google Calendar Connection */}
+        <GoogleCalendarConnect
+          compact={true}
+          onStatusChange={(connected) =>
+            setIsGoogleCalendarConnected(connected)
+          }
+        />
 
         <Button
           size="md"
@@ -961,7 +601,7 @@ export default function LeadMeetingDetalsTable({
                     isDisabled={
                       actionState?.submitting || meeting.status === "cancelled"
                     }
-                    onPress={() => handleCancelMeetingWithGoogle(meeting)}
+                    onPress={() => handleCancelMeeting(meeting)}
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-red-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     <span className="relative z-10 font-medium text-sm">
@@ -991,7 +631,8 @@ export default function LeadMeetingDetalsTable({
           body: "py-0 overflow-y-auto",
           header: "pb-0 sticky top-0 z-10",
           footer: "pt-0 border-t border-gray-200/60 sticky bottom-0 z-10",
-          wrapper: "items-end",
+          wrapper: "items-end z-[100000]",
+          backdrop: "z-[100000]",
         }}
         motionProps={{
           variants: {
@@ -1016,10 +657,10 @@ export default function LeadMeetingDetalsTable({
           },
         }}
       >
-        <ModalContent className="overflow-hidden rounded-none shadow-2xl h-full">
+        <ModalContent className="flex flex-col overflow-hidden rounded-none shadow-2xl h-full">
           {() => (
             <>
-              <ModalHeader className="relative bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-gray-200/60">
+              <ModalHeader className="relative bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-gray-200/60 flex-shrink-0">
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5"></div>
                 <div className="relative flex items-center gap-3">
                   <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-md flex-shrink-0">
@@ -1049,7 +690,7 @@ export default function LeadMeetingDetalsTable({
                   </div>
                 </div>
               </ModalHeader>
-              <ModalBody className="px-4 py-4 bg-white flex-1 overflow-y-auto">
+              <ModalBody className="px-4 py-4 bg-white flex-1 min-h-0 overflow-y-auto">
                 <div className="space-y-4 pb-4">
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-700 block">
@@ -1196,114 +837,41 @@ export default function LeadMeetingDetalsTable({
                     />
                   </div>
 
-                  {/* Google Calendar Integration */}
+                  {/* Google Calendar Connection Status */}
                   <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200/50 shadow-sm">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-sm">
-                          <FaGoogle className="w-4 h-4 text-white" />
-                        </div>
-                        <div>
-                          <span className="font-semibold text-gray-900 text-sm">
-                            Google Calendar Integration
-                          </span>
-                          <p className="text-xs text-gray-600 mt-0.5">
-                            {editingMeetingId
-                              ? "Update existing calendar event"
-                              : "Automatically create calendar events"}
-                          </p>
-                          {editingMeetingId && (
-                            <p className="text-xs text-blue-600 mt-1">
-                              Calendar integration is required for rescheduling
-                            </p>
-                          )}
-                        </div>
+                    <GoogleCalendarConnect
+                      compact={false}
+                      onStatusChange={(connected) =>
+                        setIsGoogleCalendarConnected(connected)
+                      }
+                    />
+                    {isGoogleCalendarConnected && !editingMeetingId && (
+                      <div className="mt-3 space-y-2">
+                        <label className="text-sm font-medium text-gray-700 block">
+                          Attendee Email
+                        </label>
+                        <Input
+                          placeholder="attendee@example.com"
+                          value={formState.attendeeEmail}
+                          onValueChange={handleInputChange("attendeeEmail")}
+                          variant="bordered"
+                          size="md"
+                          type="email"
+                          classNames={{
+                            input:
+                              "text-base text-gray-900 placeholder:text-gray-500",
+                            inputWrapper:
+                              "border-gray-300 hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all duration-200 bg-white shadow-sm h-11",
+                          }}
+                          description="The attendee will receive a calendar invitation"
+                        />
                       </div>
-                      <Switch
-                        isSelected={formState.createGoogleEvent}
-                        onValueChange={(value) => {
-                          setFormState((prev) => ({
-                            ...prev,
-                            createGoogleEvent: value,
-                          }));
-                        }}
-                        size="sm"
-                        color="primary"
-                        isDisabled={editingMeetingId ? true : false} // Disable toggle when rescheduling
-                        classNames={{
-                          wrapper: "group-data-[selected=true]:bg-blue-500",
-                        }}
-                      />
-                    </div>
-
-                    {formState.createGoogleEvent && (
-                      <div className="space-y-3 bg-white/60 backdrop-blur-sm rounded-lg p-3 border border-white/50">
-                        <div className="flex items-start gap-3 text-xs text-blue-700 bg-blue-100/50 rounded-lg p-3">
-                          <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <svg
-                              className="w-3 h-3 text-white"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                          </div>
-                          <div>
-                            <p className="font-medium text-sm">
-                              {editingMeetingId
-                                ? "This will automatically:"
-                                : "This will automatically:"}
-                            </p>
-                            <ul className="mt-1 space-y-1 text-xs text-blue-600">
-                              {editingMeetingId ? (
-                                <>
-                                  <li>
-                                    • Update the existing Google Calendar event
-                                  </li>
-                                  <li>• Notify attendees of the time change</li>
-                                  <li>• Sync updates with your calendar</li>
-                                </>
-                              ) : (
-                                <>
-                                  <li>• Create a Google Calendar event</li>
-                                  <li>
-                                    • Send calendar invitations to attendees
-                                  </li>
-                                  <li>• Sync with your calendar</li>
-                                </>
-                              )}
-                            </ul>
-                          </div>
-                        </div>
-                        {!editingMeetingId && (
-                          <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700 block">
-                              Attendee Email
-                            </label>
-                            <Input
-                              placeholder="attendee@example.com"
-                              value={formState.attendeeEmail}
-                              onValueChange={handleInputChange("attendeeEmail")}
-                              variant="bordered"
-                              size="md"
-                              type="email"
-                              classNames={{
-                                input:
-                                  "text-base text-gray-900 placeholder:text-gray-500",
-                                inputWrapper:
-                                  "border-gray-300 hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all duration-200 bg-white shadow-sm h-11",
-                              }}
-                              description="The attendee will receive a calendar invitation"
-                            />
-                          </div>
-                        )}
-                      </div>
+                    )}
+                    {!isGoogleCalendarConnected && (
+                      <p className="mt-2 text-xs text-amber-600">
+                        Meeting will be saved without Google Calendar sync.
+                        Connect your account above to enable auto-sync.
+                      </p>
                     )}
                   </div>
                 </div>
@@ -1332,7 +900,7 @@ export default function LeadMeetingDetalsTable({
                   </div>
                 )}
               </ModalBody>
-              <ModalFooter className="bg-white border-t border-gray-200 px-4 py-3 gap-2">
+              <ModalFooter className="bg-white border-t border-gray-200 px-4 py-3 gap-2 flex-shrink-0">
                 <Button
                   variant="light"
                   onPress={closeModal}
